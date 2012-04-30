@@ -13,7 +13,7 @@
       id = ids[_i];
       model = id.length === 36 ? this.where({
         id: id
-      })[0] : this.get(parseInt(id));
+      })[0] : this.get(id);
       _results.push(model.save());
     }
     return _results;
