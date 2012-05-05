@@ -4,42 +4,6 @@
 
   var S4, dualsync, localsync, onlineSync, result;
 
-  Backbone.Collection.prototype.syncDirty = function() {
-    var id, ids, model, store, _i, _len, _results;
-    store = localStorage.getItem("" + this.url + "_dirty");
-    ids = (store && store.split(',')) || [];
-    _results = [];
-    for (_i = 0, _len = ids.length; _i < _len; _i++) {
-      id = ids[_i];
-      model = id.length === 36 ? this.where({
-        id: id
-      })[0] : this.get(id);
-      _results.push(model.save());
-    }
-    return _results;
-  };
-
-  Backbone.Collection.prototype.syncDestroyed = function() {
-    var id, ids, model, store, _i, _len, _results;
-    store = localStorage.getItem("" + this.url + "_destroyed");
-    ids = (store && store.split(',')) || [];
-    _results = [];
-    for (_i = 0, _len = ids.length; _i < _len; _i++) {
-      id = ids[_i];
-      model = new this.model({
-        id: id
-      });
-      model.collection = this;
-      _results.push(model.destroy());
-    }
-    return _results;
-  };
-
-  Backbone.Collection.prototype.syncDirtyAndDestroyed = function() {
-    this.syncDirty();
-    return this.syncDestroyed();
-  };
-
   S4 = function() {
     return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
   };
@@ -254,6 +218,10 @@
           options.success = function(resp, status, xhr) {
             var i, _i, _len;
             console.log('got remote', resp, 'putting into', options.storeName);
+			//NIX: FOR PARTIAL CLIENT DATA UPDATE
+			if(options.update) {
+				return success(resp, status, xhr);
+			}
             localsync('clear', model, options);
             if (_.isArray(resp)) {
               for (_i = 0, _len = resp.length; _i < _len; _i++) {
@@ -324,9 +292,105 @@
           };
           return onlineSync(method, model, options);
         }
+		break;
     }
   };
 
+	/*########### FOR PARTIAL DATA IN CLIENT UPDATE ###########*/
+	
+  Backbone.Collection.prototype.syncDirty = function() {
+    var id, ids, model, store, _i, _len, _results;
+    store = localStorage.getItem("" + this.url + "_dirty");
+    ids = (store && store.split(',')) || [];
+    _results = [];
+    for (_i = 0, _len = ids.length; _i < _len; _i++) {
+      id = ids[_i];
+      model = id.length === 36 ? this.where({
+        id: id
+      })[0] : this.get(id);
+      _results.push(model.save());
+    }
+    return _results;
+  };
+
+  Backbone.Collection.prototype.syncDestroyed = function() {
+    var id, ids, model, store, _i, _len, _results;
+    store = localStorage.getItem("" + this.url + "_destroyed");
+    ids = (store && store.split(',')) || [];
+    _results = [];
+    for (_i = 0, _len = ids.length; _i < _len; _i++) {
+      id = ids[_i];
+      model = new this.model({
+        id: id
+      });
+      model.collection = this;
+      _results.push(model.destroy());
+    }
+    return _results;
+  };
+
+  Backbone.Collection.prototype.syncDirtyAndDestroyed = function() {
+    this.syncDirty();
+    return this.syncDestroyed();
+  };
+
+	Backbone.DualStorageCollection = Backbone.Collection.extend({
+		reset:function(models, options) {
+			models || (models=[]);
+			options || (options={})
+			console.log('options in reset: ', options);
+			if(options && options.update===true) {
+				console.log('update==true in reset for ' + this.url);
+				for (var i=0; i < models.length; i++) {
+					this.remove(models[i], {silent:true});
+					localsync('delete',models[i],options);
+					if(!models[i].deleted){
+						console.log('adding model ' + models[i].id);
+						this.add(models[i], _.extend({silent: true}, options));
+						localsync('create',models[i],options);
+					}
+ 				};
+			    if (!options.silent) this.trigger('reset', this, options);
+			    return this;
+			} else {
+				return Backbone.Collection.prototype.reset.call(this, models, options); 
+			}
+		},
+		fetch:function(options) {
+			options || (options={});
+			var self = this;
+			var fetchOptions = {
+				success:function(collection, response){
+					if(response.length>0 && options.remote!=false) { 
+						localStorage.setItem("" + self.url + "_lastUpdatedTime", response.lastUpdate || new Date().toJSON());
+					}
+				}
+			};
+			_.extend(options, fetchOptions);
+			return Backbone.Collection.prototype.fetch.call(this, options); 
+		},
+	    fetchIncremental: function(options){
+			options || (options={});
+			//IF NO REMOTE, then call normal fetch(), which loads local data only.
+			if(options.remote === false) {
+				return this.fetch(options);
+			}
+			options.update = true;
+			var lastUpdatedTime = localStorage.getItem("" + this.url + "_lastUpdatedTime");
+			var lastUpdatedKey = this.lastUpdatedTimestampAttr || "lastUpdated";
+			options.data || (options.data={});
+			if(lastUpdatedTime) {
+				options.data[lastUpdatedKey] = lastUpdatedTime;
+			}
+			return this.fetch(options);
+		},
+		load: function(options) {
+			this.fetch({remote: false});
+			this.fetchIncremental(options);
+		}
+	});
+
+	/*############# END #################*/
   Backbone.sync = dualsync;
 
 }).call(this);
