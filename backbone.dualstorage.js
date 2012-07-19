@@ -344,7 +344,7 @@
 				for (var i=0; i < models.length; i++) {
 					this.remove(models[i], {silent:true});
 					localsync('delete',models[i],options);
-					if(!models[i].deleted){
+					if(!models[i].deleted || models[i].deleted=="0"){
 						console.log('adding model ' + models[i].id);
 						this.add(models[i], _.extend({silent: true}, options));
 						localsync('create',models[i],options);
@@ -359,14 +359,21 @@
 		fetch:function(options) {
 			options || (options={});
 			var self = this;
+			var userSuccess=function(){};
+			if(options.success) {
+				userSuccess=options.success;
+			}
 			var fetchOptions = {
 				success:function(collection, response){
-					if(response.length>0 && options.remote!=false) { 
+					var dataArray = options.remote != false ?response.data:response;
+					if( ( dataArray && dataArray.length> 0 ) && options.remote!=false) {
 						localStorage.setItem("" + self.url + "_lastUpdatedTime", response.lastUpdate || new Date().toJSON());
 					}
+					userSuccess(collection, response);
 				}
 			};
 			_.extend(options, fetchOptions);
+			
 			return Backbone.Collection.prototype.fetch.call(this, options); 
 		},
 	    fetchIncremental: function(options){
@@ -387,6 +394,18 @@
 		load: function(options) {
 			this.fetch({remote: false});
 			this.fetchIncremental(options);
+		},
+		//UTILITY
+		emptyCollection: function() {
+			var models = [];
+			this.each(function(model) {
+				models.push(model);
+			});
+			console.log('removing ' + models.length + ' model from collection: ',model); 
+			for (var i=0; i < models.length; i++) {
+				var model = models[i];
+				this.remove(model);
+			};
 		}
 	});
 
