@@ -344,7 +344,7 @@
 				for (var i=0; i < models.length; i++) {
 					this.remove(models[i], {silent:true});
 					localsync('delete',models[i],options);
-					if(!models[i].deleted || models[i].deleted=="0"){
+					if(!models[i].deleted){
 						console.log('adding model ' + models[i].id);
 						this.add(models[i], _.extend({silent: true}, options));
 						localsync('create',models[i],options);
@@ -365,15 +365,13 @@
 			}
 			var fetchOptions = {
 				success:function(collection, response){
-					var dataArray = options.remote != false ?response.data:response;
-					if( ( dataArray && dataArray.length> 0 ) && options.remote!=false) {
+					if(response.length>0 && options.remote!=false) { 
 						localStorage.setItem("" + self.url + "_lastUpdatedTime", response.lastUpdate || new Date().toJSON());
 					}
 					userSuccess(collection, response);
 				}
 			};
 			_.extend(options, fetchOptions);
-			
 			return Backbone.Collection.prototype.fetch.call(this, options); 
 		},
 	    fetchIncremental: function(options){
@@ -393,6 +391,7 @@
 		},
 		load: function(options) {
 			this.fetch({remote: false});
+			this.syncDirtyAndDestroyed();
 			this.fetchIncremental(options);
 		},
 		//UTILITY
@@ -406,7 +405,10 @@
 				var model = models[i];
 				this.remove(model);
 			};
-		}
+		},
+		hasDirtyOrDestroyed: function() {
+	      return !_.isEmpty(localStorage.getItem("" + this.url + "_dirty")) || !_.isEmpty(localStorage.getItem("" + this.url + '_destroyed'));
+	    }
 	});
 
 	/*############# END #################*/
